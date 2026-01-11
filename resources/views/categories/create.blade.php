@@ -36,4 +36,27 @@
         </div>
     </div>
 </div>
+
+<style>
+/* Responsive Design */
+@media (max-width: 768px) {
+    .card-header.d-flex {
+        flex-direction: column;
+        gap: 1rem;
+        align-items: flex-start !important;
+    }
+    .card-header .btn {
+        width: 100%;
+    }
+}
+
+@media (max-width: 576px) {
+    h5 {
+        font-size: 1rem;
+    }
+    .form-label {
+        font-size: 0.9rem;
+    }
+}
+</style>
 @endsection

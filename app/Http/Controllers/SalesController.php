@@ -6,6 +6,7 @@ use App\Models\Sales;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\ActivityLog;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -40,6 +41,67 @@ class SalesController extends Controller
         $todaySales = Sales::whereDate('created_at', today())->sum('total_price');
 
         return view('sales.index', compact('sales', 'products', 'totalSales', 'totalQuantity', 'todaySales'));
+    }
+
+    /**
+     * Show sales reports (admin only).
+     */
+    public function reports(Request $request)
+    {
+        // Hanya admin yang dapat mengakses laporan
+        if (Auth::user()->role !== 'admin') {
+            abort(403);
+        }
+
+        // Query dasar untuk total keseluruhan
+        $query = Sales::query();
+
+        // Filter rentang tanggal
+        if ($request->filled('start_date')) {
+            $query->whereDate('created_at', '>=', $request->start_date);
+        }
+        if ($request->filled('end_date')) {
+            $query->whereDate('created_at', '<=', $request->end_date);
+        }
+        
+        // Filter user/staff
+        if ($request->filled('user_id')) {
+            $query->where('user_id', $request->user_id);
+        }
+
+        // Total keseluruhan berdasarkan filter
+        $overallTotal = (clone $query)->sum('total_price');
+        $overallQuantity = (clone $query)->sum('quantity');
+
+        // Agregasi per staff
+        $perStaff = Sales::select('user_id', DB::raw('SUM(total_price) as total_sales'), DB::raw('SUM(quantity) as total_quantity'))
+            ->when($request->filled('start_date'), function($q) use($request){
+                $q->whereDate('created_at', '>=', $request->start_date);
+            })
+            ->when($request->filled('end_date'), function($q) use($request){
+                $q->whereDate('created_at', '<=', $request->end_date);
+            })
+            // Filter user/staff untuk agregasi
+            ->when($request->filled('user_id'), function($q) use($request){
+                $q->where('user_id', $request->user_id);
+            })
+            ->groupBy('user_id')
+            ->get()
+            ->sortByDesc('total_sales');
+
+        // Lampirkan data user untuk masing-masing baris agregasi
+        $userIds = $perStaff->pluck('user_id')->unique()->filter()->values();
+        $userMap = User::whereIn('id', $userIds)->get()->keyBy('id');
+
+        $perStaff = $perStaff->map(function($row) use ($userMap) {
+            $row->user = $userMap->get($row->user_id);
+            return $row;
+        });
+
+        // Ambil semua user dengan role staff untuk dropdown filter
+        $users = User::where('role', 'staff')->get();
+
+        return view('sales.reports', compact('perStaff', 'overallTotal', 'overallQuantity', 'users'));
     }
 
     /**

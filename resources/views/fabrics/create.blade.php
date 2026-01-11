@@ -16,14 +16,17 @@
                         <div class="row mb-4">
                             <div class="col-md-4">
                                 <label class="form-label fw-bold">Jenis Kain</label>
-                                <select name="category_id" class="form-select @error('category_id') is-invalid @enderror" required>
-                                    <option value="">-- Pilih Jenis --</option>
-                                    @foreach($categories as $cat)
-                                        <option value="{{ $cat->id }}" {{ old('category_id') == $cat->id ? 'selected' : '' }}>
-                                            {{ $cat->name }}
-                                        </option>
-                                    @endforeach
-                                </select>
+                                <div class="position-relative">
+                                    <select name="category_id" class="form-select @error('category_id') is-invalid @enderror" required>
+                                        <option value="">-- Pilih Jenis --</option>
+                                        @foreach($categories as $cat)
+                                            <option value="{{ $cat->id }}" {{ old('category_id') == $cat->id ? 'selected' : '' }}>
+                                                {{ $cat->name }}
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                    <i class="bi bi-chevron-down position-absolute top-50 end-0 translate-middle-y me-3 pe-none" style="color: #6c757d;"></i>
+                                </div>
                                 @error('category_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
                             </div>
                             <div class="col-md-5">

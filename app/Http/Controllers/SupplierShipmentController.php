@@ -57,6 +57,7 @@ class SupplierShipmentController extends Controller
             'due_date' => 'nullable|required_if:payment_status,hutang|date|after:today',
             'cost_price' => 'required|numeric|min:0',
             'additional_costs' => 'nullable|numeric|min:0',
+            'invoice_total' => 'required|numeric|min:0',
             'received_date' => 'required|date',
             'notes' => 'nullable|string'
         ]);
@@ -111,6 +112,7 @@ class SupplierShipmentController extends Controller
             'due_date' => 'nullable|required_if:payment_status,hutang|date',
             'cost_price' => 'required|numeric|min:0',
             'additional_costs' => 'nullable|numeric|min:0',
+            'invoice_total' => 'required|numeric|min:0',
             'received_date' => 'required|date',
             'notes' => 'nullable|string'
         ]);
@@ -161,37 +163,52 @@ class SupplierShipmentController extends Controller
      */
     public function uploadPaymentProof(Request $request, string $id)
     {
-        $shipment = SupplierShipment::findOrFail($id);
+        try {
+            $shipment = SupplierShipment::findOrFail($id);
 
-        $request->validate([
-            'payment_proof' => 'required|file|mimes:jpg,jpeg,png,pdf|max:2048'
-        ]);
+            $validated = $request->validate([
+                'payment_proof' => 'required|file|mimes:jpg,jpeg,png,pdf|max:2048'
+            ], [
+                'payment_proof.required' => 'File bukti pembayaran wajib diisi.',
+                'payment_proof.file' => 'File yang diupload harus berupa file.',
+                'payment_proof.mimes' => 'File harus berformat JPG, JPEG, PNG, atau PDF.',
+                'payment_proof.max' => 'Ukuran file maksimal 2MB.'
+            ]);
 
-        // Delete old payment proof if exists
-        if ($shipment->payment_proof && Storage::disk('public')->exists($shipment->payment_proof)) {
-            Storage::disk('public')->delete($shipment->payment_proof);
+            // Delete old payment proof if exists
+            if ($shipment->payment_proof && Storage::disk('public')->exists($shipment->payment_proof)) {
+                Storage::disk('public')->delete($shipment->payment_proof);
+            }
+
+            // Upload new payment proof
+            $file = $request->file('payment_proof');
+            $filename = 'payment_proof_' . $shipment->id . '_' . time() . '.' . $file->getClientOriginalExtension();
+            $path = $file->storeAs('payment-proofs', $filename, 'public');
+
+            if (!$path) {
+                return redirect()->route('supplier-shipments.index')
+                    ->with('error', 'Gagal mengupload file. Silakan coba lagi.');
+            }
+
+            // Update shipment status to lunas
+            $shipment->update([
+                'payment_proof' => $path,
+                'payment_status' => 'lunas',
+                'paid_at' => now()
+            ]);
+
+            // Log activity
+            ActivityLog::create([
+                'user_id' => Auth::id(),
+                'activity' => 'Upload bukti pembayaran untuk: ' . $shipment->supplier_name . ' - ' . $shipment->product_name
+            ]);
+
+            return redirect()->route('supplier-shipments.index')
+                ->with('success', 'Bukti pembayaran berhasil diupload! Status otomatis berubah menjadi Lunas.');
+        } catch (\Exception $e) {
+            return redirect()->route('supplier-shipments.index')
+                ->with('error', 'Terjadi kesalahan: ' . $e->getMessage());
         }
-
-        // Upload new payment proof
-        $file = $request->file('payment_proof');
-        $filename = 'payment_proof_' . $shipment->id . '_' . time() . '.' . $file->getClientOriginalExtension();
-        $path = $file->storeAs('payment-proofs', $filename, 'public');
-
-        // Update shipment status to lunas
-        $shipment->update([
-            'payment_proof' => $path,
-            'payment_status' => 'lunas',
-            'paid_at' => now()
-        ]);
-
-        // Log activity
-        ActivityLog::create([
-            'user_id' => Auth::id(),
-            'activity' => 'Upload bukti pembayaran untuk: ' . $shipment->supplier_name . ' - ' . $shipment->product_name
-        ]);
-
-        return redirect()->route('supplier-shipments.index')
-            ->with('success', 'Bukti pembayaran berhasil diupload! Status otomatis berubah menjadi Lunas.');
     }
 
     /**
@@ -220,4 +237,56 @@ class SupplierShipmentController extends Controller
         return redirect()->route('supplier-shipments.index')
             ->with('success', 'Bukti pembayaran berhasil dihapus! Status kembali menjadi Hutang.');
     }
-}
+    /**
+     * Show reminders admin page (Pengingat Pembayaran)
+     */
+    public function reminders()
+    {
+        $shipments = SupplierShipment::where('payment_status', 'hutang')
+            ->whereNotNull('due_date')
+            ->where('due_date', '>=', now())
+            ->where('due_date', '<=', now()->addWeeks(6))
+            ->orderBy('due_date', 'asc')
+            ->get();
+
+        return view('supplier-shipments.reminders', compact('shipments'));
+    }
+
+    /**
+     * Mark reminder as sent (update last_reminder_sent_at)
+     */
+    public function markReminderSent(Request $request, $id)
+    {
+        $shipment = SupplierShipment::findOrFail($id);
+        $shipment->update(['last_reminder_sent_at' => now()]);
+
+        ActivityLog::create([
+            'user_id' => Auth::id(),
+            'activity' => 'Menandai reminder terkirim untuk: ' . $shipment->supplier_name . ' - ' . $shipment->product_name
+        ]);
+
+        return redirect()->back()->with('success', 'Tandai pengingat berhasil.');
+    }
+
+    /**
+     * Mark all visible reminders as sent (used by Kirim Semua)
+     */
+    public function markAllRemindersSent(Request $request)
+    {
+        $shipments = SupplierShipment::where('payment_status', 'hutang')
+            ->whereNotNull('due_date')
+            ->where('due_date', '>=', now())
+            ->where('due_date', '<=', now()->addWeeks(6))
+            ->get();
+
+        foreach ($shipments as $s) {
+            $s->update(['last_reminder_sent_at' => now()]);
+        }
+
+        ActivityLog::create([
+            'user_id' => Auth::id(),
+            'activity' => 'Menandai semua reminder terkirim untuk shipment yang mendekati jatuh tempo'
+        ]);
+
+        return redirect()->back()->with('success', 'Semua pengingat berhasil ditandai terkirim.');
+    }}

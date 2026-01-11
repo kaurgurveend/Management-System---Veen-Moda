@@ -3,7 +3,7 @@
 @section('content')
 <div class="container-fluid">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="h3 mb-0 text-gray-800">Activity Log</h2>
+        <h2 class="h3 mb-0" style="color: #ffffff !important;">Activity Log</h2>
     </div>
 
     <div class="card shadow mb-4">
@@ -73,4 +73,50 @@
         </div>
     </div>
 </div>
+
+<style>
+/* Responsive Design */
+@media (max-width: 768px) {
+    .d-flex.justify-content-between {
+        flex-direction: column;
+        gap: 1rem;
+        align-items: flex-start !important;
+    }
+    .row > [class*="col-"] {
+        margin-bottom: 1rem;
+    }
+    .d-flex.align-items-end {
+        flex-direction: column;
+        align-items: stretch !important;
+    }
+    .d-flex.align-items-end .btn {
+        width: 100%;
+    }
+    .table-responsive {
+        font-size: 0.85rem;
+    }
+    .table th, .table td {
+        padding: 0.5rem 0.375rem;
+    }
+}
+
+@media (max-width: 576px) {
+    h2 {
+        font-size: 1.25rem;
+    }
+    .table {
+        font-size: 0.8rem;
+    }
+    .table th, .table td {
+        padding: 0.5rem 0.25rem;
+    }
+    .table th:first-child,
+    .table td:first-child {
+        max-width: 100px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+}
+</style>
 @endsection

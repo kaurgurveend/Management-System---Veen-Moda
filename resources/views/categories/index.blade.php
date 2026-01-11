@@ -3,7 +3,7 @@
 @section('content')
 <div class="container-fluid">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="h3 mb-0 text-gray-800">Manajemen Kategori Kain</h2>
+        <h2 class="h3 mb-0" style="color: #ffffff !important;">Manajemen Kategori Kain</h2>
         <a href="{{ route('categories.create') }}" class="btn btn-primary shadow-sm">
             <i class="fas fa-plus fa-sm text-white-50"></i> + Tambah Kategori
         </a>
@@ -43,9 +43,9 @@
                                 <td>{{ $category->description ?? '-' }}</td>
                                 <td><span class="badge bg-info">{{ $category->products_count }}</span></td>
                                 <td>
-                                    <div class="btn-group">
+                                    <div class="d-flex gap-2">
                                         <a href="{{ route('categories.edit', $category->id) }}" class="btn btn-sm btn-warning text-white">Edit</a>
-                                        <form action="{{ route('categories.destroy', $category->id) }}" method="POST" onsubmit="return confirm('Yakin ingin menghapus kategori ini?')" style="display:inline;">
+                                        <form action="{{ route('categories.destroy', $category->id) }}" method="POST" onsubmit="return confirm('Yakin ingin menghapus kategori ini?')">
                                             @csrf
                                             @method('DELETE')
                                             <button type="submit" class="btn btn-sm btn-danger">Hapus</button>
@@ -67,4 +67,44 @@
         </div>
     </div>
 </div>
+
+<style>
+/* Responsive Design */
+@media (max-width: 768px) {
+    .d-flex.justify-content-between {
+        flex-direction: column;
+        gap: 1rem;
+        align-items: flex-start !important;
+    }
+    .d-flex.justify-content-between .btn {
+        width: 100%;
+    }
+    .table-responsive {
+        font-size: 0.85rem;
+    }
+    .btn-group {
+        flex-direction: column;
+        width: 100%;
+    }
+    .btn-group .btn {
+        width: 100%;
+        margin-bottom: 0.25rem;
+    }
+}
+
+@media (max-width: 576px) {
+    h2 {
+        font-size: 1.25rem;
+    }
+    .table {
+        font-size: 0.8rem;
+    }
+    .table th, .table td {
+        padding: 0.5rem 0.375rem;
+    }
+    .badge {
+        font-size: 0.75rem;
+    }
+}
+</style>
 @endsection

@@ -19,8 +19,10 @@ class SupplierShipment extends Model
         'due_date',
         'cost_price',
         'additional_costs',
+        'invoice_total',
         'received_date',
-        'notes'
+        'notes',
+        'last_reminder_sent_at'
     ];
 
     protected $casts = [
@@ -29,7 +31,9 @@ class SupplierShipment extends Model
         'paid_at' => 'datetime',
         'cost_price' => 'decimal:2',
         'additional_costs' => 'decimal:2',
-        'hpp' => 'decimal:2'
+        'invoice_total' => 'decimal:2',
+        'hpp' => 'decimal:2',
+        'last_reminder_sent_at' => 'datetime'
     ];
 
     public function isPaid()
@@ -57,7 +61,9 @@ class SupplierShipment extends Model
         if (!$this->due_date) {
             return null;
         }
-        return now()->diffInDays($this->due_date, false);
+        // Use real diff in days and floor to avoid decimal fractions (show rounded down)
+        $diff = now()->floatDiffInRealDays($this->due_date);
+        return (int) floor($diff);
     }
 
     public function getIsApproachingDueAttribute()

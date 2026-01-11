@@ -22,26 +22,45 @@
 
                         <div class="mb-4">
                             <label class="form-label fw-bold">Pilih Produk & Warna <span class="text-danger">*</span></label>
-                            <select name="product_variant_id" id="product_variant_id" class="form-select @error('product_variant_id') is-invalid @enderror" required>
-                                <option value="">-- Pilih Produk & Warna --</option>
-                                @foreach($products as $product)
-                                    <optgroup label="{{ $product->name }} ({{ $product->category->name }})">
-                                        @foreach($product->variants as $variant)
-                                            <option value="{{ $variant->id }}" 
-                                                    data-stock="{{ $variant->stock }}"
-                                                    data-price="{{ $product->price }}"
-                                                    {{ old('product_variant_id') == $variant->id ? 'selected' : '' }}>
-                                                {{ $variant->color }} - Stok: {{ $variant->stock }} pcs
-                                            </option>
-                                        @endforeach
-                                    </optgroup>
-                                @endforeach
-                            </select>
+
+                            <div class="searchable-select">
+                                <div class="form-control d-flex justify-content-between align-items-center" id="product_select_control" tabindex="0" role="combobox" aria-expanded="false">
+                                    <span id="product_select_display">-- Pilih Produk & Warna --</span>
+                                    <i class="bi bi-caret-down-fill"></i>
+                                </div>
+
+                                <div class="searchable-dropdown d-none shadow-sm bg-white border mt-1 p-3" id="product_dropdown" style="max-height: 320px; overflow: auto;">
+                                    <input type="search" id="product_search" class="form-control mb-2" placeholder="Ketikan produk atau warna untuk mencari...">
+                                    <div id="product_list" class="list-group">
+                                        {{-- Will be populated by JS --}}
+                                    </div>
+                                    <div id="product_no_results" class="text-muted text-center py-3 d-none">Tidak ada hasil</div>
+                                </div>
+
+                                <!-- Hidden select kept for form submission and compatibility -->
+                                <select name="product_variant_id" id="product_variant_id" class="form-select d-none @error('product_variant_id') is-invalid @enderror" required>
+                                    <option value="">-- Pilih Produk & Warna --</option>
+                                    @foreach($products as $product)
+                                        <optgroup label="{{ $product->name }} ({{ $product->category->name }})">
+                                            @foreach($product->variants as $variant)
+                                                <option value="{{ $variant->id }}" 
+                                                        data-stock="{{ $variant->stock }}"
+                                                        data-price="{{ $product->price }}"
+                                                        data-product="{{ $product->name }}"
+                                                        {{ old('product_variant_id') == $variant->id ? 'selected' : '' }}>
+                                                    {{ $variant->color }} - Stok: {{ $variant->stock }} pcs
+                                                </option>
+                                            @endforeach
+                                        </optgroup>
+                                    @endforeach
+                                </select>
+                            </div>
+
                             @error('product_variant_id') 
                                 <div class="invalid-feedback">{{ $message }}</div> 
                             @enderror
                             <small class="text-muted mt-1 d-block" id="stock-info"></small>
-                        </div>
+                        </div> 
 
                         <div class="row mb-4">
                             <div class="col-md-6">
@@ -163,9 +182,188 @@
         });
         priceInput.addEventListener('input', calculateTotal);
 
+        // Build dropdown items (integrated searchable dropdown)
+        const productDropdown = document.getElementById('product_dropdown');
+        const productList = document.getElementById('product_list');
+        const productSearchInput = document.getElementById('product_search');
+        const productControl = document.getElementById('product_select_control');
+        const productDisplay = document.getElementById('product_select_display');
+        const noResults = document.getElementById('product_no_results');
+
+        // Parse original optgroups/options from hidden select
+        const groups = [];
+        Array.from(variantSelect.children).forEach(node => {
+            if (node.tagName.toLowerCase() === 'optgroup') {
+                const label = node.label || '';
+                const items = Array.from(node.children).map(opt => ({
+                    value: opt.value,
+                    text: opt.textContent.trim(),
+                    product: opt.dataset.product || '',
+                    stock: opt.dataset.stock || '',
+                    price: opt.dataset.price || ''
+                }));
+                groups.push({ label, items });
+            }
+        });
+
+        function buildList(filter = '') {
+            productList.innerHTML = '';
+            const q = filter.trim().toLowerCase();
+            let totalMatches = 0;
+
+            groups.forEach(group => {
+                const matched = group.items.filter(i => {
+                    if (!q) return true;
+                    return i.product.toLowerCase().includes(q) || i.text.toLowerCase().includes(q);
+                });
+
+                if (matched.length === 0) return;
+
+                const groupHeader = document.createElement('div');
+                groupHeader.className = 'fw-bold small text-muted mb-1 mt-2';
+                groupHeader.textContent = group.label;
+                productList.appendChild(groupHeader);
+
+                matched.forEach(item => {
+                    totalMatches++;
+                    const div = document.createElement('button');
+                    div.type = 'button';
+                    div.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-center';
+                    div.dataset.value = item.value;
+                    div.dataset.stock = item.stock;
+                    div.dataset.price = item.price;
+                    div.textContent = item.text;
+
+                    div.addEventListener('click', function() {
+                        // select option in hidden select
+                        variantSelect.value = this.dataset.value;
+                        variantSelect.dispatchEvent(new Event('change'));
+                        // update display
+                        productDisplay.textContent = this.textContent;
+                        hideDropdown();
+                    });
+
+                    productList.appendChild(div);
+                });
+            });
+
+            if (totalMatches === 0) {
+                noResults.classList.remove('d-none');
+            } else {
+                noResults.classList.add('d-none');
+            }
+        }
+
+        function showDropdown() {
+            productDropdown.classList.remove('d-none');
+            productControl.setAttribute('aria-expanded', 'true');
+            // focus search input
+            productSearchInput.focus();
+        }
+
+        function hideDropdown() {
+            productDropdown.classList.add('d-none');
+            productControl.setAttribute('aria-expanded', 'false');
+        }
+
+        // Toggle on control click
+        productControl.addEventListener('click', function(e) {
+            if (productDropdown.classList.contains('d-none')) {
+                buildList('');
+                showDropdown();
+            } else {
+                hideDropdown();
+            }
+        });
+
+        // Clicking outside closes dropdown
+        document.addEventListener('click', function(e) {
+            if (!productControl.contains(e.target) && !productDropdown.contains(e.target)) {
+                hideDropdown();
+            }
+        });
+
+        // Filter as user types (debounce)
+        let dropdownFilterTimeout = null;
+        productSearchInput.addEventListener('input', function() {
+            clearTimeout(dropdownFilterTimeout);
+            dropdownFilterTimeout = setTimeout(() => {
+                buildList(this.value);
+            }, 120);
+        });
+
+        // Enter selects first visible item
+        productSearchInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const first = productList.querySelector('.list-group-item');
+                if (first) first.click();
+            }
+            if (e.key === 'Escape') {
+                hideDropdown();
+                productControl.focus();
+            }
+        });
+
+        // When hidden select changes (programmatic), update UI and stock info
+        variantSelect.addEventListener('change', function() {
+            const selected = variantSelect.options[variantSelect.selectedIndex];
+            if (selected && selected.value) {
+                productDisplay.textContent = selected.dataset.product + ' — ' + selected.text;
+                // ensure price default and stock info update
+                updateStockInfo();
+            } else {
+                productDisplay.textContent = '-- Pilih Produk & Warna --';
+                stockInfo.innerHTML = '';
+            }
+        });
+
+        // Initialize display if there's a preselected value
+        if (variantSelect.value) {
+            const sel = variantSelect.options[variantSelect.selectedIndex];
+            productDisplay.textContent = sel.dataset.product + ' — ' + sel.textContent.trim();
+        }
+
+        // Initial build (hidden)
+        buildList('');
+
         // Initial calculation
         updateStockInfo();
     });
 </script>
 @endpush
+
+<style>
+/* Responsive Design */
+@media (max-width: 768px) {
+    .card-header.d-flex {
+        flex-direction: column;
+        gap: 1rem;
+        align-items: flex-start !important;
+    }
+    .card-header .btn {
+        width: 100%;
+    }
+    .row > [class*="col-"] {
+        margin-bottom: 1rem;
+    }
+    .col-md-6, .col-md-4 {
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+}
+
+@media (max-width: 576px) {
+    h5 {
+        font-size: 1rem;
+    }
+    .form-label {
+        font-size: 0.9rem;
+    }
+    .input-group-text {
+        font-size: 0.85rem;
+        padding: 0.375rem 0.5rem;
+    }
+}
+</style>
 

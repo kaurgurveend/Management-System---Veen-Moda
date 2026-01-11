@@ -54,12 +54,12 @@
                                     </td>
                                     <td>{{ $user->created_at->format('d M Y') }}</td>
                                     <td>
-                                        <div class="btn-group" role="group">
+                                        <div class="d-flex gap-2 flex-wrap">
                                             <a href="{{ route('users.edit', $user) }}" class="btn btn-sm btn-warning">
                                                 <i class="fas fa-edit"></i> Edit
                                             </a>
                                             
-                                            <form action="{{ route('users.toggle-active', $user) }}" method="POST" class="d-inline">
+                                            <form action="{{ route('users.toggle-active', $user) }}" method="POST">
                                                 @csrf
                                                 <button type="submit" class="btn btn-sm {{ $user->is_active ? 'btn-secondary' : 'btn-success' }}">
                                                     <i class="fas fa-{{ $user->is_active ? 'ban' : 'check' }}"></i>
@@ -67,7 +67,7 @@
                                                 </button>
                                             </form>
                                             
-                                            <form action="{{ route('users.destroy', $user) }}" method="POST" class="d-inline" onsubmit="return confirm('Yakin ingin menghapus akun ini?')">
+                                            <form action="{{ route('users.destroy', $user) }}" method="POST" onsubmit="return confirm('Yakin ingin menghapus akun ini?')">
                                                 @csrf
                                                 @method('DELETE')
                                                 <button type="submit" class="btn btn-sm btn-danger">
@@ -94,4 +94,51 @@
         </div>
     </div>
 </div>
+
+<style>
+/* Responsive Design */
+@media (max-width: 768px) {
+    .card-header.d-flex {
+        flex-direction: column;
+        gap: 1rem;
+        align-items: flex-start !important;
+    }
+    .card-header .btn {
+        width: 100%;
+    }
+    .table-responsive {
+        font-size: 0.85rem;
+    }
+    .btn-group {
+        flex-direction: column;
+        width: 100%;
+    }
+    .btn-group .btn, .btn-group form {
+        width: 100%;
+        margin-bottom: 0.25rem;
+    }
+    .btn-group .btn {
+        margin-right: 0 !important;
+    }
+}
+
+@media (max-width: 576px) {
+    h5 {
+        font-size: 1rem;
+    }
+    .table {
+        font-size: 0.8rem;
+    }
+    .table th, .table td {
+        padding: 0.5rem 0.25rem;
+    }
+    .badge {
+        font-size: 0.75rem;
+    }
+    .table th:nth-child(4),
+    .table td:nth-child(4) {
+        display: none;
+    }
+}
+</style>
 @endsection

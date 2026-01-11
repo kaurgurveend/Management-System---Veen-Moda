@@ -20,29 +20,37 @@ class FabricController extends Controller
         $query = Product::with(['category', 'variants']);
 
         // Fitur Pencarian berdasarkan nama kain
-        if ($request->has('search')) {
+        if ($request->has('search') && $request->search) {
             $query->where('name', 'like', '%' . $request->search . '%');
         }
 
-        $products = $query->latest()->paginate(10);
+        // Filter berdasarkan kategori
+        if ($request->has('category_id') && $request->category_id) {
+            $query->where('category_id', $request->category_id);
+        }
 
-        return view('fabrics.index', compact('products'));
+        $products = $query->latest()->paginate(10);
+        $categories = Category::all();
+
+        return view('fabrics.index', compact('products', 'categories'));
     }
 
     /**
-     * Menampilkan form input kain baru
+     * Menampilkan form input kain baru (ADMIN & STAFF BISA AKSES)
      */
     public function create()
     {
+        // HAPUS PENGECEKAN ADMIN - Biarkan Staff juga bisa akses
         $categories = Category::all();
         return view('fabrics.create', compact('categories'));
     }
 
     /**
-     * Menyimpan kain baru beserta varian warnanya
+     * Menyimpan kain baru beserta varian warnanya (ADMIN & STAFF BISA AKSES)
      */
     public function store(Request $request)
     {
+        // HAPUS PENGECEKAN ADMIN - Biarkan Staff juga bisa simpan
         $request->validate([
             'category_id' => 'required|exists:categories,id',
             'name'        => 'required|string|max:255',
@@ -84,25 +92,31 @@ class FabricController extends Controller
     }
 
     /**
-     * Menampilkan form edit kain
+     * Menampilkan form edit kain (Admin bisa edit semua, Staff hanya bisa edit stok)
      */
     public function edit($id)
     {
+        // Jika bukan admin, arahkan ke halaman tambah stok (staff hanya boleh menambah stok)
+        if (Auth::user()->role !== 'admin') {
+            return redirect()->route('fabrics.add-stock', $id);
+        }
+
         $product = Product::with('variants')->findOrFail($id);
         $categories = Category::all();
-        return view('fabrics.edit', compact('product', 'categories'));
+        $isAdmin = Auth::user()->role === 'admin';
+        return view('fabrics.edit', compact('product', 'categories', 'isAdmin'));
     }
 
     /**
-     * Mengupdate data kain dan stoknya
+     * Mengupdate data kain dan stoknya (Admin bisa edit semua, Staff hanya bisa edit stok)
      */
     public function update(Request $request, $id)
     {
         $product = Product::findOrFail($id);
-        $user = Auth::user();
+        $isAdmin = Auth::user()->role === 'admin';
 
-        // Validasi berbeda untuk admin vs staff
-        if ($user->role === 'admin') {
+        if ($isAdmin) {
+            // Admin: Bisa edit semua
             $request->validate([
                 'category_id' => 'required|exists:categories,id',
                 'name'        => 'required|string|max:255',
@@ -110,69 +124,123 @@ class FabricController extends Controller
                 'colors'      => 'required|array|min:1',
                 'stocks'      => 'required|array|min:1',
             ]);
-        } else {
-            $request->validate([
-                'category_id' => 'required|exists:categories,id',
-                'name'        => 'required|string|max:255',
-                'price'       => 'required|numeric|min:0',
-                'colors'      => 'required|array|min:1',
-                'current_stocks' => 'required|array|min:1',
-                'add_stocks'  => 'required|array|min:1',
-            ]);
-        }
 
-        try {
-            DB::transaction(function () use ($request, $product, $user) {
-                // Update data utama
-                $product->update([
-                    'category_id' => $request->category_id,
-                    'name'        => $request->name,
-                    'price'       => $request->price,
-                ]);
-
-                if ($user->role === 'admin') {
-                    // Admin: Update langsung (hapus lama, simpan baru)
-                    $product->variants()->delete();
-                    foreach ($request->colors as $index => $colorName) {
-                        $product->variants()->create([
-                            'color' => $colorName,
-                            'stock' => $request->stocks[$index],
-                        ]);
-                    }
-                    ActivityLog::create([
-                        'user_id'  => Auth::id(),
-                        'activity' => "Mengupdate kain: " . $product->name
+            try {
+                DB::transaction(function () use ($request, $product) {
+                    // Update data utama
+                    $product->update([
+                        'category_id' => $request->category_id,
+                        'name'        => $request->name,
+                        'price'       => $request->price,
                     ]);
-                } else {
-                    // Staff: Hanya tambah stok (increment), tidak bisa edit langsung
+
+                    // Update varian (hapus lama, simpan baru)
                     $product->variants()->delete();
                     foreach ($request->colors as $index => $colorName) {
-                        $currentStock = $request->current_stocks[$index] ?? 0;
-                        $addStock = $request->add_stocks[$index] ?? 0;
-                        $newStock = $currentStock + $addStock;
-
-                        $product->variants()->create([
-                            'color' => $colorName,
-                            'stock' => $newStock,
-                        ]);
-
-                        if ($addStock > 0) {
-                            ActivityLog::create([
-                                'user_id'  => Auth::id(),
-                                'activity' => "Menambah stok " . $addStock . " pcs untuk " . $product->name . " (Warna: " . $colorName . ")"
+                        if (!empty($colorName)) {
+                            $product->variants()->create([
+                                'color' => $colorName,
+                                'stock' => $request->stocks[$index],
                             ]);
                         }
                     }
+
                     ActivityLog::create([
                         'user_id'  => Auth::id(),
-                        'activity' => "Mengupdate data kain: " . $product->name
+                        'activity' => "Mengupdate kain: " . $product->name . " (Nama, Harga, Kategori, Warna, Stok)"
                     ]);
+                });
+
+                return redirect()->route('fabrics.index')->with('success', 'Data kain berhasil diperbarui!');
+            } catch (\Exception $e) {
+                return redirect()->back()->with('error', 'Gagal update: ' . $e->getMessage());
+            }
+        } else {
+            // Staff: Hanya bisa edit stok
+            $request->validate([
+                'variants' => 'required|array|min:1',
+                'variants.*.variant_id' => 'required|exists:product_variants,id',
+                'variants.*.stock' => 'required|integer|min:0',
+            ]);
+
+            try {
+                DB::transaction(function () use ($request, $product) {
+                    foreach ($request->variants as $variantData) {
+                        $variant = ProductVariant::findOrFail($variantData['variant_id']);
+                        $oldStock = $variant->stock;
+                        $newStock = $variantData['stock'] ?? 0;
+                        
+                        if ($newStock != $oldStock) {
+                            $variant->update(['stock' => $newStock]);
+                            
+                            ActivityLog::create([
+                                'user_id'  => Auth::id(),
+                                'activity' => "Mengupdate stok " . $product->name . " (Warna: " . $variant->color . ") - Stok: " . $oldStock . " → " . $newStock
+                            ]);
+                        }
+                    }
+                });
+
+                return redirect()->route('fabrics.index')->with('success', 'Stok berhasil diperbarui!');
+            } catch (\Exception $e) {
+                return redirect()->back()->with('error', 'Gagal update stok: ' . $e->getMessage());
+            }
+        }
+    }
+
+    /**
+     * Menampilkan form tambah stok (UNTUK STAFF)
+     */
+    public function addStock($id)
+    {
+        // Hanya staff yang bisa akses (admin tidak perlu fitur ini)
+        if (Auth::user()->role === 'admin') {
+            return redirect()->route('fabrics.edit', $id)->with('info', 'Admin dapat menggunakan menu Edit untuk mengubah stok.');
+        }
+
+        $product = Product::with('variants')->findOrFail($id);
+        return view('fabrics.add-stock', compact('product'));
+    }
+
+    /**
+     * Menyimpan penambahan stok (UNTUK STAFF)
+     */
+    public function storeAddStock(Request $request, $id)
+    {
+        // Hanya staff yang bisa akses
+        if (Auth::user()->role === 'admin') {
+            abort(403, 'Admin harus menggunakan menu Edit untuk mengubah stok.');
+        }
+
+        $product = Product::with('variants')->findOrFail($id);
+
+        $request->validate([
+            'variants' => 'required|array|min:1',
+            'variants.*.variant_id' => 'required|exists:product_variants,id',
+            'variants.*.add_stock' => 'required|integer|min:0',
+        ]);
+
+        try {
+            DB::transaction(function () use ($request, $product) {
+                foreach ($request->variants as $variantData) {
+                    $variant = ProductVariant::findOrFail($variantData['variant_id']);
+                    $addStock = $variantData['add_stock'] ?? 0;
+
+                    if ($addStock > 0) {
+                        $oldStock = $variant->stock;
+                        $variant->increment('stock', $addStock);
+
+                        ActivityLog::create([
+                            'user_id'  => Auth::id(),
+                            'activity' => "Menambah stok " . $addStock . " pcs untuk " . $product->name . " (Warna: " . $variant->color . ") - Stok: " . $oldStock . " → " . $variant->stock
+                        ]);
+                    }
                 }
             });
 
-            return redirect()->route('fabrics.index')->with('success', 'Data kain diperbarui!');
+            return redirect()->route('fabrics.index')->with('success', 'Stok berhasil ditambahkan!');
         } catch (\Exception $e) {
-            return redirect()->back()->with('error', 'Gagal update: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Gagal menambah stok: ' . $e->getMessage());
         }
     }
 
@@ -181,6 +249,11 @@ class FabricController extends Controller
      */
     public function destroy($id)
     {
+        // Pastikan hanya admin yang bisa hapus
+        if (Auth::user()->role !== 'admin') {
+            abort(403, 'AKSES DITOLAK. HANYA ADMIN YANG DAPAT MENGHAPUS PRODUK.');
+        }
+
         $product = Product::findOrFail($id);
         $name = $product->name;
         $product->delete();
